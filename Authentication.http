@@ -27,7 +27,7 @@ PUT {{Authentication_HostAddress}}/users/{{id}}
 Content-Type: application/json
 
 {
-  "email":"john@gmail.com",
+  "email":"john1@gmail.com",
   "password":"12345678"
 }
 
