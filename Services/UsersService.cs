@@ -59,6 +59,9 @@ namespace Authentication.Services
         public async Task<User?> ReadUserAsync(int id) =>
             await _context.Users.FindAsync(id);
 
+        public async Task<User?> ReadUserByEmailAsync(string email) =>
+            await _context.Users.FirstOrDefaultAsync(u => u.Email == email.ToLower());
+
         // update
         public async Task<ResponseUserDto> UpdateUserAsync(int id, UpdateUserDto updateUserDto)
         {
