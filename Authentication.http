@@ -1,6 +1,52 @@
-@Authentication_HostAddress = http://localhost:5237
+@Authentication_HostAddress = https://localhost:7097
 
-GET {{Authentication_HostAddress}}/weatherforecast/
-Accept: application/json
+
+
+POST {{Authentication_HostAddress}}/users
+Content-Type: application/json
+
+{
+    "firstName": "John",
+    "lastName": "Doe",
+    "email": "JOHN@gmail.com",
+    "password":"12345678"
+}
+
+###
+
+GET {{Authentication_HostAddress}}/users
+
+###
+
+@id=1
+GET {{Authentication_HostAddress}}/users/{{id}}
+
+###
+
+PUT {{Authentication_HostAddress}}/users/{{id}}
+Content-Type: application/json
+
+{
+  "email":"john@gmail.com",
+  "password":"12345678"
+}
+
+###
+
+DELETE {{Authentication_HostAddress}}/users/{{id}}
+Content-Type: application/json
+{
+  "password":"12345678"
+}
+
+###
+
+PATCH {{Authentication_HostAddress}}/users/{{id}}/password
+Content-Type: application/json
+
+{
+  "currentPassword":"12345678",
+  "newPassword":"87654321"
+}
 
 ###
