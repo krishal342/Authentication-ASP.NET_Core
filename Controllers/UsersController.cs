@@ -21,28 +21,28 @@ namespace Authentication.Controllers
             _usersService = usersService;
         }
 
-        // create
-        [HttpPost]
-        public async Task<IActionResult> CreateUser(CreateUserDto createUserDto)
-        {
-            try
-            {
-                var createdUser = await _usersService.CreateUserAsync(createUserDto);
-                return CreatedAtAction(nameof(ReadUser), new { id = createdUser.Id }, createdUser);
-            }
-            catch (InvalidOperationException)
-            {
-                var problem = new ProblemDetails
-                {
-                    Type = "https://httpstatuses.com/409",
-                    Title = "Conflict",
-                    Detail = "Email already exits.",
-                    Status = StatusCodes.Status409Conflict
-                };
-                return Conflict(problem);
-            }
+        //// create
+        //[HttpPost]
+        //public async Task<IActionResult> CreateUser(CreateUserDto createUserDto)
+        //{
+        //    try
+        //    {
+        //        var createdUser = await _usersService.CreateUserAsync(createUserDto);
+        //        return CreatedAtAction(nameof(ReadUser), new { id = createdUser.Id }, createdUser);
+        //    }
+        //    catch (InvalidOperationException)
+        //    {
+        //        var problem = new ProblemDetails
+        //        {
+        //            Type = "https://httpstatuses.com/409",
+        //            Title = "Conflict",
+        //            Detail = "Email already exits.",
+        //            Status = StatusCodes.Status409Conflict
+        //        };
+        //        return Conflict(problem);
+        //    }
 
-        }
+        //}
 
         // read
         [HttpGet]

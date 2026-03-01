@@ -61,3 +61,15 @@ Content-Type: application/json
 }
 
 ###
+
+POST {{Authentication_HostAddress}}/auth/register
+Content-Type: application/json
+
+{
+      "firstName": "hari",
+    "lastName": "suwal",
+    "email": "Hari@gmail.com",
+    "password":"12345678"
+}
+
+###

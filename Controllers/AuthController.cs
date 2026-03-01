@@ -13,7 +13,7 @@ namespace Authentication.Controllers
         private readonly TokenService _tokenService;
         private readonly UsersService _usersService;
 
-        public AuthController(TokenService tokenService,UsersService usersService)
+        public AuthController(TokenService tokenService, UsersService usersService)
         {
             _tokenService = tokenService;
 
@@ -77,5 +77,28 @@ namespace Authentication.Controllers
 
 
         }
+
+        // register user
+        [HttpPost("register")]
+        public async Task<IActionResult> Register(CreateUserDto createUserDto)
+        {
+            try
+            {
+                var createdUser = await _usersService.CreateUserAsync(createUserDto);
+                return Ok(createdUser);
+            }
+            catch (InvalidOperationException)
+            {
+                var problem = new ProblemDetails
+                {
+                    Type = "https://httpstatuses.com/409",
+                    Title = "Conflict",
+                    Detail = "Email already exits.",
+                    Status = StatusCodes.Status409Conflict
+                };
+                return Conflict(problem);
+            }
+        }
+
     }
 }
