@@ -1,6 +1,7 @@
 ﻿using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace Authentication.Services
@@ -14,7 +15,8 @@ namespace Authentication.Services
             _config = config;
         }
 
-        public string GenerateToken(string userId, string email) 
+        // generate access token
+        public async Task<string> GenerateAccessTokenAsync(string userId, string email) 
         {
 
             var key = new SymmetricSecurityKey(
@@ -42,6 +44,18 @@ namespace Authentication.Services
 
 
             return tokenString;
+        }
+
+        // generate refresh token
+        public async Task<string> GenerateRefreshTokenAsync()
+        {
+            var randomBytes = new byte[64]; // 512-bit token
+            using (var rng = RandomNumberGenerator.Create())
+            {
+                rng.GetBytes(randomBytes);
+                return Convert.ToBase64String(randomBytes);
+            }
+
         }
     }
 }

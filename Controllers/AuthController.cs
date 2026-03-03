@@ -12,16 +12,44 @@ namespace Authentication.Controllers
     {
         private readonly TokenService _tokenService;
         private readonly UsersService _usersService;
+        private readonly RefreshTokenService _refreshTokenService;
+        private readonly IConfiguration _config;
 
-        public AuthController(TokenService tokenService, UsersService usersService)
+
+        public AuthController(TokenService tokenService, UsersService usersService, RefreshTokenService refreshTokenService, IConfiguration config)
         {
             _tokenService = tokenService;
 
             _usersService = usersService;
 
+            _refreshTokenService = refreshTokenService;
+
+            _config = config;
         }
 
-        // login user and return token  
+        // register user
+        [HttpPost("register")]
+        public async Task<IActionResult> Register(CreateUserDto createUserDto)
+        {
+            try
+            {
+                var createdUser = await _usersService.CreateUserAsync(createUserDto);
+                return Ok(createdUser);
+            }
+            catch (InvalidOperationException)
+            {
+                var problem = new ProblemDetails
+                {
+                    Type = "https://httpstatuses.com/409",
+                    Title = "Conflict",
+                    Detail = "Email already exits.",
+                    Status = StatusCodes.Status409Conflict
+                };
+                return Conflict(problem);
+            }
+        }
+
+        // login user and set token as cookie
         [HttpPost("login")]
         public async Task<IActionResult> Login(LoginUserDto userDto)
         {
@@ -53,14 +81,20 @@ namespace Authentication.Controllers
                 };
                 return BadRequest(problem);
             }
-            var token = _tokenService.GenerateToken(user.Id.ToString(), user.Email);
 
-            Response.Cookies.Append("token", token, new CookieOptions
+            var accessToken = await _tokenService.GenerateAccessTokenAsync(user.Id.ToString(), user.Email);
+
+            var refreshToken = await _tokenService.GenerateRefreshTokenAsync();
+
+            await _refreshTokenService.CreateRefreshTokenAsync(user.Id, refreshToken);
+
+            Response.Cookies.Append("refreshToken", refreshToken, new CookieOptions
             {
                 HttpOnly = true,
                 Secure = true,
-                SameSite = SameSiteMode.Strict,
-                Expires = DateTime.UtcNow.AddDays(7)
+                SameSite = SameSiteMode.None,
+                Expires = DateTime.UtcNow.AddMinutes(double.Parse(_config["RefreshToken:ExpireMinutes"]!)),
+                Path = "/auth/refresh"
             });
 
             var responseUser = new ResponseUserDto
@@ -72,33 +106,68 @@ namespace Authentication.Controllers
                 CreatedAt = user.CreatedAt
             };
 
-            return Ok(responseUser);
-
-
+            return Ok(new { user = responseUser, token = accessToken });
 
         }
 
-        // register user
-        [HttpPost("register")]
-        public async Task<IActionResult> Register(CreateUserDto createUserDto)
+        // refresh access token
+        [HttpGet("refresh")]
+        public async Task<IActionResult> RefreshAccessToken()
         {
             try
             {
-                var createdUser = await _usersService.CreateUserAsync(createUserDto);
-                return Ok(createdUser);
+
+                var refreshToken = Request.Cookies["refreshToken"];
+                if (string.IsNullOrEmpty(refreshToken))
+                {
+                    var problem = new ProblemDetails
+                    {
+                        Type = "https://httpstatuses.com/401",
+                        Title = "Unauthorized",
+                        Detail = "Expired or Invalid refresh token.",
+                        Status = StatusCodes.Status401Unauthorized
+                    };
+                    return Unauthorized(problem);
+                }
+
+                var userId = await _refreshTokenService.ValidateAsync(refreshToken);
+
+                var user = await _usersService.ReadUserAsync(userId);
+
+                var accessToken = await _tokenService.GenerateAccessTokenAsync(user!.Id.ToString(), user.Email);
+
+                var responseUser = new ResponseUserDto
+                {
+                    Id = user.Id,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    Email = user.Email,
+                    CreatedAt = user.CreatedAt
+                };
+
+                return Ok(new { user = responseUser, token = accessToken });
             }
-            catch (InvalidOperationException)
+            catch (KeyNotFoundException)
             {
                 var problem = new ProblemDetails
                 {
-                    Type = "https://httpstatuses.com/409",
-                    Title = "Conflict",
-                    Detail = "Email already exits.",
-                    Status = StatusCodes.Status409Conflict
+                    Type = "https://httpstatuses.com/401",
+                    Title = "Unauthorized",
+                    Detail = "Expired or Invalid refresh token.",
+                    Status = StatusCodes.Status401Unauthorized
                 };
-                return Conflict(problem);
+                return Unauthorized(problem);
             }
         }
+
+        // logout
+        //[HttpGet("logout")]
+        //public async Task<IActionResult> Logout()
+        //{
+
+        //}
+
+
 
     }
 }

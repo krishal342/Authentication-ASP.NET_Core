@@ -2,16 +2,6 @@
 
 
 
-POST {{Authentication_HostAddress}}/users
-Content-Type: application/json
-
-{
-    "firstName": "John",
-    "lastName": "Doe",
-    "email": "JOHN@gmail.com",
-    "password":"12345678"
-}
-
 ###
 
 GET {{Authentication_HostAddress}}/users

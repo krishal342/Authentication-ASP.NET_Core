@@ -4,12 +4,14 @@ using Authentication.Dtos.PasswordDtos;
 using Authentication.Dtos.UserDtos;
 using Authentication.Models;
 using Authentication.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Authentication.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("/[controller]")]
     public class UsersController : ControllerBase
@@ -20,29 +22,6 @@ namespace Authentication.Controllers
         {
             _usersService = usersService;
         }
-
-        //// create
-        //[HttpPost]
-        //public async Task<IActionResult> CreateUser(CreateUserDto createUserDto)
-        //{
-        //    try
-        //    {
-        //        var createdUser = await _usersService.CreateUserAsync(createUserDto);
-        //        return CreatedAtAction(nameof(ReadUser), new { id = createdUser.Id }, createdUser);
-        //    }
-        //    catch (InvalidOperationException)
-        //    {
-        //        var problem = new ProblemDetails
-        //        {
-        //            Type = "https://httpstatuses.com/409",
-        //            Title = "Conflict",
-        //            Detail = "Email already exits.",
-        //            Status = StatusCodes.Status409Conflict
-        //        };
-        //        return Conflict(problem);
-        //    }
-
-        //}
 
         // read
         [HttpGet]
@@ -109,8 +88,8 @@ namespace Authentication.Controllers
 
         }
 
-        [HttpPatch("{id}/password")]
-        public async Task<IActionResult> UpdatePassword(int id, ChangePasswordDto changePasswordDto)
+        [HttpPatch("{id}/change-password")]
+        public async Task<IActionResult> ChangePassword(int id, ChangePasswordDto changePasswordDto)
         {
             try
             {
