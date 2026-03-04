@@ -4,19 +4,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Authentication.Services
 {
-    public class RefreshTokenService
+    public class RefreshTokenService(ApplicationDbContext context, IConfiguration config)
     {
-        private readonly ApplicationDbContext _context;
-        private readonly IConfiguration _config;
-
-        public RefreshTokenService(ApplicationDbContext context, IConfiguration config)
-        {
-            _context = context; 
-            _config = config;
-        }
+        private readonly ApplicationDbContext _context = context;
+        private readonly IConfiguration _config = config;
 
         // create
-        public async Task CreateRefreshTokenAsync(int userId, string refreshToken)
+        public async Task CreateAsync(int userId, string refreshToken)
         {
             var newRefreshToken = new RefreshToken
             {

@@ -1,40 +1,32 @@
 
-
 using Authentication.Dtos.PasswordDtos;
 using Authentication.Dtos.UserDtos;
-using Authentication.Models;
 using Authentication.Services;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http.HttpResults;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Authentication.Controllers
 {
     [Authorize]
     [ApiController]
     [Route("/[controller]")]
-    public class UsersController : ControllerBase
+    public class UsersController(UsersService usersService) : ControllerBase
     {
-        private readonly UsersService _usersService;
 
-        public UsersController(UsersService usersService)
-        {
-            _usersService = usersService;
-        }
-
-        // read
+        // read all user
         [HttpGet]
-        public async Task<IActionResult> ReadUsers()
+        public async Task<IActionResult> GetUsers()
         {
-            var users = await _usersService.ReadUsersAsync();
+            var users = await usersService.GetUsersAsync();
             return Ok(users);
         }
 
+        // read user by id
         [HttpGet("{id}")]
-        public async Task<IActionResult> ReadUser(int id)
+        public async Task<IActionResult> GetUser(int id)
         {
-            var user = await _usersService.ReadUserAsync(id);
+            var user = await usersService.GetUserAsync(id);
             if (user == null)
                 return NotFound();
 
@@ -50,13 +42,21 @@ namespace Authentication.Controllers
             return Ok(responseUser);
         }
 
-        // update
+
+        // update logged in user detail
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateUser(int id, UpdateUserDto updateUserDto)
         {
             try
             {
-                var updatedUser = await _usersService.UpdateUserAsync(id, updateUserDto);
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+                if (int.Parse(userId!) != id)
+                {
+                    return Forbid();
+                }
+
+                var updatedUser = await usersService.UpdateUserAsync(id, updateUserDto);
                 return Ok(updatedUser);
             }
             catch (KeyNotFoundException)
@@ -88,12 +88,20 @@ namespace Authentication.Controllers
 
         }
 
+
+        // change password of logged in user
         [HttpPatch("{id}/change-password")]
         public async Task<IActionResult> ChangePassword(int id, ChangePasswordDto changePasswordDto)
         {
             try
             {
-                await _usersService.ChangePasswordAsync(id, changePasswordDto);
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+                if (int.Parse(userId!) != id)
+                {
+                    return Forbid();
+                }
+                await usersService.ChangePasswordAsync(id, changePasswordDto);
                 return NoContent();
 
             }
@@ -115,13 +123,21 @@ namespace Authentication.Controllers
             }
         }
 
-        // delete
+
+        // delete logged in user
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteUser(int id, DeleteUserDto deleteUserDto)
         {
             try
             {
-                await _usersService.DeleteUserAsync(id, deleteUserDto);
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+                if (int.Parse(userId!) != id)
+                {
+                    return Forbid();
+                }
+
+                await usersService.DeleteUserAsync(id, deleteUserDto);
                 return NoContent();
             }
             catch (KeyNotFoundException)

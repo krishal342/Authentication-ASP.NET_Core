@@ -8,24 +8,8 @@ namespace Authentication.Controllers
 {
     [ApiController]
     [Route("/[controller]")]
-    public class AuthController : ControllerBase
+    public class AuthController(TokenService tokenService, UsersService usersService, RefreshTokenService refreshTokenService, IConfiguration config) : ControllerBase
     {
-        private readonly TokenService _tokenService;
-        private readonly UsersService _usersService;
-        private readonly RefreshTokenService _refreshTokenService;
-        private readonly IConfiguration _config;
-
-
-        public AuthController(TokenService tokenService, UsersService usersService, RefreshTokenService refreshTokenService, IConfiguration config)
-        {
-            _tokenService = tokenService;
-
-            _usersService = usersService;
-
-            _refreshTokenService = refreshTokenService;
-
-            _config = config;
-        }
 
         // register user
         [HttpPost("register")]
@@ -33,7 +17,7 @@ namespace Authentication.Controllers
         {
             try
             {
-                var createdUser = await _usersService.CreateUserAsync(createUserDto);
+                var createdUser = await usersService.CreateUserAsync(createUserDto);
                 return Ok(createdUser);
             }
             catch (InvalidOperationException)
@@ -49,11 +33,13 @@ namespace Authentication.Controllers
             }
         }
 
-        // login user and set token as cookie
+
+        // login user 
         [HttpPost("login")]
         public async Task<IActionResult> Login(LoginUserDto userDto)
         {
-            var user = await _usersService.ReadUserByEmailAsync(userDto.Email);
+            var user = await usersService.GetUserByEmailAsync(userDto.Email);
+
             if (user is null)
             {
                 var problem = new ProblemDetails
@@ -65,6 +51,7 @@ namespace Authentication.Controllers
                 };
                 return BadRequest(problem);
             }
+
 
             var hasher = new PasswordHasher<User>();
 
@@ -82,20 +69,23 @@ namespace Authentication.Controllers
                 return BadRequest(problem);
             }
 
-            var accessToken = await _tokenService.GenerateAccessTokenAsync(user.Id.ToString(), user.Email);
+            var accessToken = await tokenService.GenerateAccessTokenAsync(user.Id.ToString(), user.Email);
 
-            var refreshToken = await _tokenService.GenerateRefreshTokenAsync();
+            var refreshToken = await tokenService.GenerateRefreshTokenAsync();
 
-            await _refreshTokenService.CreateRefreshTokenAsync(user.Id, refreshToken);
+
+            await refreshTokenService.CreateAsync(user.Id, refreshToken);
+
 
             Response.Cookies.Append("refreshToken", refreshToken, new CookieOptions
             {
                 HttpOnly = true,
                 Secure = true,
                 SameSite = SameSiteMode.None,
-                Expires = DateTime.UtcNow.AddMinutes(double.Parse(_config["RefreshToken:ExpireMinutes"]!)),
+                Expires = DateTime.UtcNow.AddDays(double.Parse(config["RefreshToken:ExpireDays"]!)),
                 Path = "/auth/refresh"
             });
+
 
             var responseUser = new ResponseUserDto
             {
@@ -109,6 +99,7 @@ namespace Authentication.Controllers
             return Ok(new { user = responseUser, token = accessToken });
 
         }
+
 
         // refresh access token
         [HttpGet("refresh")]
@@ -130,11 +121,11 @@ namespace Authentication.Controllers
                     return Unauthorized(problem);
                 }
 
-                var userId = await _refreshTokenService.ValidateAsync(refreshToken);
+                var userId = await refreshTokenService.ValidateAsync(refreshToken);
 
-                var user = await _usersService.ReadUserAsync(userId);
+                var user = await usersService.GetUserAsync(userId);
 
-                var accessToken = await _tokenService.GenerateAccessTokenAsync(user!.Id.ToString(), user.Email);
+                var accessToken = await tokenService.GenerateAccessTokenAsync(user!.Id.ToString(), user.Email);
 
                 var responseUser = new ResponseUserDto
                 {
@@ -160,12 +151,29 @@ namespace Authentication.Controllers
             }
         }
 
-        // logout
-        //[HttpGet("logout")]
-        //public async Task<IActionResult> Logout()
-        //{
 
-        //}
+        // reset password request
+        [HttpPost("/forget-password")]
+        public async Task<IActionResult> ForgetPassword()
+        {
+            return Ok("forget password");
+        }
+
+
+        // validate OTP
+        [HttpPost("/validate-otp")]
+        public async Task<IActionResult> ValidateOTP()
+        {
+            return Ok("Validate OTP");
+        }
+
+
+        // reset password
+        [HttpPost("/reset-password")]
+        public async Task<IActionResult> ResetPassword()
+        {
+            return Ok("Reset Password");
+        }
 
 
 

@@ -6,14 +6,9 @@ using System.Text;
 
 namespace Authentication.Services
 {
-    public class TokenService
+    public class TokenService(IConfiguration config)
     {
-        private readonly IConfiguration _config;
-
-        public TokenService(IConfiguration config)
-        {
-            _config = config;
-        }
+        private readonly IConfiguration _config = config;
 
         // generate access token
         public async Task<string> GenerateAccessTokenAsync(string userId, string email) 
@@ -50,11 +45,9 @@ namespace Authentication.Services
         public async Task<string> GenerateRefreshTokenAsync()
         {
             var randomBytes = new byte[64]; // 512-bit token
-            using (var rng = RandomNumberGenerator.Create())
-            {
-                rng.GetBytes(randomBytes);
-                return Convert.ToBase64String(randomBytes);
-            }
+            using var rng = RandomNumberGenerator.Create();
+            rng.GetBytes(randomBytes);
+            return Convert.ToBase64String(randomBytes);
 
         }
     }

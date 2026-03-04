@@ -63,3 +63,7 @@ Content-Type: application/json
 }
 
 ###
+
+POST {{Authentication_HostAddress}}/forget-password
+
+###

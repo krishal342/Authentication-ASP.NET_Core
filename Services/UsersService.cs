@@ -8,14 +8,9 @@ using Authentication.Dtos.PasswordDtos;
 
 namespace Authentication.Services
 {
-    public class UsersService
+    public class UsersService(ApplicationDbContext context)
     {
-        private readonly ApplicationDbContext _context;
-
-        public UsersService(ApplicationDbContext context)
-        {
-            _context = context;
-        }
+        private readonly ApplicationDbContext _context = context;
 
         // create
         public async Task<ResponseUserDto> CreateUserAsync(CreateUserDto createUserDto)
@@ -53,16 +48,21 @@ namespace Authentication.Services
         }
 
         // read
-        public async Task<List<User>> ReadUsersAsync() =>
+        // get all user
+        public async Task<List<User>> GetUsersAsync() =>
             await _context.Users.ToListAsync();
 
-        public async Task<User?> ReadUserAsync(int id) =>
+        // get user by id
+        public async Task<User?> GetUserAsync(int id) =>
             await _context.Users.FindAsync(id);
 
-        public async Task<User?> ReadUserByEmailAsync(string email) =>
+        // get user by email
+        public async Task<User?> GetUserByEmailAsync(string email) =>
             await _context.Users.FirstOrDefaultAsync(u => u.Email == email.ToLower());
 
         // update
+
+        // update user detail
         public async Task<ResponseUserDto> UpdateUserAsync(int id, UpdateUserDto updateUserDto)
         {
 
@@ -105,6 +105,7 @@ namespace Authentication.Services
 
         }
 
+        // change password
         public async Task ChangePasswordAsync(int id, ChangePasswordDto changePasswordDto)
         {
             var user = await _context.Users.FindAsync(id);
@@ -121,6 +122,8 @@ namespace Authentication.Services
             user.Password = hasher.HashPassword(user, changePasswordDto.NewPassword);
             await _context.SaveChangesAsync();
         }
+
+        // reset password
 
         // delete
         public async Task DeleteUserAsync(int id, DeleteUserDto deleteUserDto)
