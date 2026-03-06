@@ -1,7 +1,9 @@
 using Authentication.Data;
-using Authentication.Filters;
+using Authentication.Middlewares;
+using Authentication.Models;
 using Authentication.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -37,18 +39,20 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 builder.Services.AddScoped<UsersService>();
 builder.Services.AddScoped<TokenService>();
-builder.Services.AddScoped<RefreshTokenService>();
+builder.Services.AddScoped<RefreshTokenCleanupService>();
+builder.Services.AddScoped<EmailService>();
+builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 
-builder.Services.AddControllers(options =>
-{
-    options.Filters.Add<GlobalExceptionFilter>();
-});
+
+builder.Services.AddControllers();
 
 
 builder.Services.AddOpenApi();
 
 
 var app = builder.Build();
+
+app.UseMiddleware<ExceptionMiddleware>();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

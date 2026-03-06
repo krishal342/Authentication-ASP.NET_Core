@@ -1,35 +1,44 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Authentication.Data;
 using Authentication.Models;
-using Microsoft.AspNetCore.Mvc;
 using Authentication.Dtos.UserDtos;
 using Microsoft.AspNetCore.Identity;
 using Authentication.Dtos.PasswordDtos;
+using Authentication.Exceptions;
 
 namespace Authentication.Services
 {
-    public class UsersService(ApplicationDbContext context)
-    {
-        private readonly ApplicationDbContext _context = context;
 
-        // create
+
+    public class UsersService(ApplicationDbContext context, IPasswordHasher<User> passwordHasher)
+    {
+
+        private readonly ApplicationDbContext _context = context ?? throw new ArgumentNullException(nameof(context));
+        private readonly IPasswordHasher<User> _passwordHasher = passwordHasher ?? throw new ArgumentNullException(nameof(passwordHasher));
+
+        #region Create Operation
+
+        // create user 
         public async Task<ResponseUserDto> CreateUserAsync(CreateUserDto createUserDto)
         {
-            var email = createUserDto.Email.ToLower();
 
-            if (_context.Users.Any(u => u.Email == email))
+            var email = createUserDto.Email.ToLower().Trim();
+
+            var existingUser = await _context.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Email == email);
+
+            if (existingUser != null)
             {
-                throw new InvalidOperationException();
+                throw new EmailAlreadyExistsException();
             }
-
-            var hasher = new PasswordHasher<User>();
 
             var newUser = new User
             {
-                FirstName = createUserDto.FirstName,
-                LastName = createUserDto.LastName,
+                FirstName = createUserDto.FirstName.Trim(),
+                LastName = createUserDto.LastName.Trim(),
                 Email = email,
-                Password = hasher.HashPassword(null!, createUserDto.Password),
+                Password = _passwordHasher.HashPassword(null!, createUserDto.Password),
             };
 
             await _context.Users.AddAsync(newUser);
@@ -44,53 +53,91 @@ namespace Authentication.Services
                 CreatedAt = newUser.CreatedAt
             };
 
-
         }
 
-        // read
+        #endregion
+
+        #region Read Operations
+
         // get all user
-        public async Task<List<User>> GetUsersAsync() =>
-            await _context.Users.ToListAsync();
+        public async Task<List<User>> GetUsersAsync(int pageNumber = 1, int pageSize = 10) =>
+            await _context.Users
+            .AsNoTracking()
+            .OrderBy(u => u.Id)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
 
         // get user by id
-        public async Task<User?> GetUserAsync(int id) =>
-            await _context.Users.FindAsync(id);
+        public async Task<User> GetUserAsync(int id)
+        {
+            var user = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == id);
+
+            if(user is null)
+            {
+                throw new KeyNotFoundException("User not found.");
+            }
+            return user;
+        }
+            
 
         // get user by email
-        public async Task<User?> GetUserByEmailAsync(string email) =>
-            await _context.Users.FirstOrDefaultAsync(u => u.Email == email.ToLower());
+        public async Task<User?> GetUserByEmailAsync(string email)
+        {
+            var normalizedEmail = email.ToLower().Trim();
 
-        // update
+            return await _context.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync (u => u.Email == normalizedEmail);
+        }
+
+        // check if email exists without loading full user objects
+        public async Task<bool> EmailExistsAsync(string email)
+        {
+            var normalizedEmail = email.ToLower().Trim();
+
+            return await _context.Users
+                .AsNoTracking()
+                .AnyAsync(u => u.Email == normalizedEmail);
+        }
+
+        #endregion
+
+        #region Update Operations
 
         // update user detail
         public async Task<ResponseUserDto> UpdateUserAsync(int id, UpdateUserDto updateUserDto)
         {
 
             var user = await _context.Users.FindAsync(id);
+
             if (user is null)
             {
-                throw new KeyNotFoundException();
+                throw new KeyNotFoundException("User not found.");
             }
 
-            var email = updateUserDto.Email?.ToLower();
-
-            if (_context.Users.Any(u => u.Email == email))
-            {
-                throw new InvalidOperationException();
-            }
-
-            var hasher = new PasswordHasher<User>();
-
-            var verifyResult = hasher.VerifyHashedPassword(user, user.Password, updateUserDto.Password);
+            var verifyResult = _passwordHasher.VerifyHashedPassword(user, user.Password, updateUserDto.Password);
 
             if (verifyResult == PasswordVerificationResult.Failed)
             {
-                throw new UnauthorizedAccessException();
+                throw new IncorrectPasswordException();
             }
 
-            user.FirstName = updateUserDto.FirstName ?? user.FirstName;
-            user.LastName = updateUserDto.LastName ?? user.LastName;
-            user.Email = email ?? user.Email;
+            var normalizeEmail = updateUserDto.Email?.ToLower().Trim();
+            var emailExists = await _context.Users
+                .AsNoTracking()
+                .AnyAsync (u => u.Email == normalizeEmail);
+
+            if (emailExists)
+            {
+                throw new EmailAlreadyExistsException();
+            }
+
+            user.FirstName = updateUserDto.FirstName?.Trim() ?? user.FirstName;
+            user.LastName = updateUserDto.LastName?.Trim() ?? user.LastName;
+            user.Email = normalizeEmail ?? user.Email;
 
             await _context.SaveChangesAsync();
 
@@ -111,41 +158,68 @@ namespace Authentication.Services
             var user = await _context.Users.FindAsync(id);
             if (user is null)
             {
-                throw new KeyNotFoundException();
+                throw new KeyNotFoundException("User not found.");
             }
-            var hasher = new PasswordHasher<User>();
-            var verifyResult = hasher.VerifyHashedPassword(user, user.Password, changePasswordDto.CurrentPassword);
+            var verifyResult = _passwordHasher.VerifyHashedPassword(user, user.Password, changePasswordDto.CurrentPassword);
             if (verifyResult == PasswordVerificationResult.Failed)
             {
-                throw new UnauthorizedAccessException();
+                throw new IncorrectPasswordException();
             }
-            user.Password = hasher.HashPassword(user, changePasswordDto.NewPassword);
+            user.Password = _passwordHasher.HashPassword(user, changePasswordDto.NewPassword);
             await _context.SaveChangesAsync();
         }
 
+        #endregion
+
         // reset password
 
-        // delete
+        #region Delete Operation
+
+        // hard delete user
         public async Task DeleteUserAsync(int id, DeleteUserDto deleteUserDto)
         {
             var user = await _context.Users.FindAsync(id);
             if (user is null)
             {
-                throw new KeyNotFoundException();
+                throw new KeyNotFoundException("User not found.");
             }
 
-            var hasher = new PasswordHasher<User>();
-            var verifyResult = hasher.VerifyHashedPassword(user, user.Password, deleteUserDto.Password);
+            var verifyResult = _passwordHasher.VerifyHashedPassword(user, user.Password, deleteUserDto.Password);
 
             if (verifyResult == PasswordVerificationResult.Failed)
             {
-                throw new UnauthorizedAccessException();
+                throw new IncorrectPasswordException();
             }
 
             _context.Users.Remove(user);
             await _context.SaveChangesAsync();
         }
 
+        #endregion
 
+        #region Login Operation
+
+        // login
+        public async Task<User> LoginAsync(string email, string password)
+        {
+            var normalizedEmail = email.ToLower().Trim();
+
+            var user = _context.Users.FirstOrDefault(u => u.Email == normalizedEmail);
+            if (user is null)
+            {
+                throw new UnauthorizedAccessException("Invalid email or password.");
+            }
+
+            var verifyResut = _passwordHasher.VerifyHashedPassword(user,user.Password, password);
+
+            if(verifyResut == PasswordVerificationResult.Failed)
+            {
+                throw new UnauthorizedAccessException("Invalid email or password");
+            }
+
+            return user;
+        }
+
+        #endregion
     }
 }

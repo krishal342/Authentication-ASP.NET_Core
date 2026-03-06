@@ -1,92 +1,25 @@
-﻿using Authentication.Dtos.UserDtos;
+﻿using Authentication.Dtos.PasswordDtos;
+using Authentication.Dtos.UserDtos;
 using Authentication.Models;
 using Authentication.Services;
-using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Authentication.Controllers
 {
     [ApiController]
-    [Route("/[controller]")]
-    public class AuthController(TokenService tokenService, UsersService usersService, RefreshTokenService refreshTokenService, IConfiguration config) : ControllerBase
+    [Route("api/[controller]")]
+    public class AuthController(
+        TokenService tokenService, 
+        UsersService usersService, 
+        EmailService emailService, 
+        IConfiguration config) : ControllerBase
     {
 
-        // register user
-        [HttpPost("register")]
-        public async Task<IActionResult> Register(CreateUserDto createUserDto)
+        // helper function to send response after login or refresh access token
+        private async Task<IActionResult> LoginResponse(User user, string accessToken)
         {
-            try
-            {
-                var createdUser = await usersService.CreateUserAsync(createUserDto);
-                return Ok(createdUser);
-            }
-            catch (InvalidOperationException)
-            {
-                var problem = new ProblemDetails
-                {
-                    Type = "https://httpstatuses.com/409",
-                    Title = "Conflict",
-                    Detail = "Email already exits.",
-                    Status = StatusCodes.Status409Conflict
-                };
-                return Conflict(problem);
-            }
-        }
-
-
-        // login user 
-        [HttpPost("login")]
-        public async Task<IActionResult> Login(LoginUserDto userDto)
-        {
-            var user = await usersService.GetUserByEmailAsync(userDto.Email);
-
-            if (user is null)
-            {
-                var problem = new ProblemDetails
-                {
-                    Type = "https://httpstatuses.com/400",
-                    Status = StatusCodes.Status400BadRequest,
-                    Title = "Invalid email or password",
-                    Detail = "Invalid email or password"
-                };
-                return BadRequest(problem);
-            }
-
-
-            var hasher = new PasswordHasher<User>();
-
-            var verifyResult = hasher.VerifyHashedPassword(user, user.Password, userDto.Password);
-
-            if (verifyResult == PasswordVerificationResult.Failed)
-            {
-                var problem = new ProblemDetails
-                {
-                    Type = "https://httpstatuses.com/400",
-                    Status = StatusCodes.Status400BadRequest,
-                    Title = "Invalid email or password",
-                    Detail = "Invalid email or password"
-                };
-                return BadRequest(problem);
-            }
-
-            var accessToken = await tokenService.GenerateAccessTokenAsync(user.Id.ToString(), user.Email);
-
-            var refreshToken = await tokenService.GenerateRefreshTokenAsync();
-
-
-            await refreshTokenService.CreateAsync(user.Id, refreshToken);
-
-
-            Response.Cookies.Append("refreshToken", refreshToken, new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = true,
-                SameSite = SameSiteMode.None,
-                Expires = DateTime.UtcNow.AddDays(double.Parse(config["RefreshToken:ExpireDays"]!)),
-                Path = "/auth/refresh"
-            });
-
-
             var responseUser = new ResponseUserDto
             {
                 Id = user.Id,
@@ -96,66 +29,115 @@ namespace Authentication.Controllers
                 CreatedAt = user.CreatedAt
             };
 
-            return Ok(new { user = responseUser, token = accessToken });
-
+            return Ok(new
+            {
+                user = responseUser,
+                token = accessToken
+            });
         }
 
+        #region register user
+
+        // register user
+        [HttpPost("register")]
+        public async Task<IActionResult> Register(CreateUserDto createUserDto)
+        {
+
+            var createdUser = await usersService.CreateUserAsync(createUserDto);
+            return CreatedAtAction(nameof(Login), new { email = createdUser.Email }, createdUser);
+
+        }
+        #endregion
+
+        #region login user
+
+        // login user 
+        [HttpPost("login")]
+        public async Task<IActionResult> Login(LoginUserDto userDto)
+        {
+            var user = await usersService.LoginAsync(userDto.Email, userDto.Password);
+
+            var accessToken = await tokenService.GenerateAccessTokenAsync(user.Id.ToString(), user.Email);
+
+            var refreshToken = await tokenService.GenerateRefreshTokenAsync();
+
+
+            await tokenService.CreateAsync(user.Id, refreshToken);
+
+
+            Response.Cookies.Append("refreshToken", refreshToken, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.None,
+                Expires = DateTime.UtcNow.AddDays(double.Parse(config["RefreshToken:ExpireDays"]!)),
+                Path = "api/auth/refresh"
+            });
+
+            return await LoginResponse(user, accessToken);
+
+
+        }
+        #endregion
+
+        #region refresh access token
 
         // refresh access token
         [HttpGet("refresh")]
         public async Task<IActionResult> RefreshAccessToken()
         {
-            try
+            var refreshToken = Request.Cookies["refreshToken"];
+
+            if (string.IsNullOrEmpty(refreshToken))
+                throw new UnauthorizedAccessException("Expired or Invalid refresh token.");
+
+            var userId = await tokenService.ValidateAsync(refreshToken);
+
+            var user = await usersService.GetUserAsync(userId);
+
+            var accessToken = await tokenService.GenerateAccessTokenAsync(user.Id.ToString(), user.Email);
+
+            return await LoginResponse(user, accessToken);
+
+        }
+        #endregion
+
+        #region logout user
+
+        [Authorize]
+        [HttpGet("logout")]
+        public async Task<IActionResult> Logout()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if(userIdClaim is null || int.TryParse(userIdClaim,out var userId))
             {
-
-                var refreshToken = Request.Cookies["refreshToken"];
-                if (string.IsNullOrEmpty(refreshToken))
-                {
-                    var problem = new ProblemDetails
-                    {
-                        Type = "https://httpstatuses.com/401",
-                        Title = "Unauthorized",
-                        Detail = "Expired or Invalid refresh token.",
-                        Status = StatusCodes.Status401Unauthorized
-                    };
-                    return Unauthorized(problem);
-                }
-
-                var userId = await refreshTokenService.ValidateAsync(refreshToken);
-
-                var user = await usersService.GetUserAsync(userId);
-
-                var accessToken = await tokenService.GenerateAccessTokenAsync(user!.Id.ToString(), user.Email);
-
-                var responseUser = new ResponseUserDto
-                {
-                    Id = user.Id,
-                    FirstName = user.FirstName,
-                    LastName = user.LastName,
-                    Email = user.Email,
-                    CreatedAt = user.CreatedAt
-                };
-
-                return Ok(new { user = responseUser, token = accessToken });
+                throw new UnauthorizedAccessException("User ID not found in token.");
             }
-            catch (KeyNotFoundException)
-            {
-                var problem = new ProblemDetails
-                {
-                    Type = "https://httpstatuses.com/401",
-                    Title = "Unauthorized",
-                    Detail = "Expired or Invalid refresh token.",
-                    Status = StatusCodes.Status401Unauthorized
-                };
-                return Unauthorized(problem);
-            }
+
+            Response.Cookies.Delete("refreshToken");
+
+            await tokenService.DeleteRefreshTokenAsync(userId);
+
+            return Ok(new {
+                token = ""
+            });
         }
 
+        #endregion
 
+        #region reset password
         // reset password request
         [HttpPost("/forget-password")]
-        public async Task<IActionResult> ForgetPassword()
+        public async Task<IActionResult> ForgetPassword(ForgetPasswordDto forgetPasswordDto)
         {
+            var user = usersService.GetUserByEmailAsync(forgetPasswordDto.Email);
+            if (user is null)
+            {
+                return Ok();
+            }
+
+            await emailService.SendEmailAsync("krishal342@gmail.com", "OTP", "OTP Testing.");
+
             return Ok("forget password");
         }
 
@@ -175,6 +157,7 @@ namespace Authentication.Controllers
             return Ok("Reset Password");
         }
 
+        #endregion
 
 
     }

@@ -6,7 +6,7 @@ namespace Authentication.Models
     {
         public int Id { get; set; }
 
-        public string Token { get; set; } = null!;
+        public required string Token { get; set; } 
 
         public int UserId { get; set; }
 
@@ -14,11 +14,10 @@ namespace Authentication.Models
 
         public DateTime ExpiresAt { get; set; }
 
-        public DateTime? RevokedAt { get; set; }
 
 
         public bool IsExpired => DateTime.UtcNow > ExpiresAt;
 
-        public bool IsActive => RevokedAt == null && !IsExpired;
+        public bool IsActive =>  !IsExpired;
     }
 }

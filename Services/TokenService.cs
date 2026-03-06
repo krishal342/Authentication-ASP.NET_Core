@@ -1,14 +1,18 @@
-﻿using Microsoft.IdentityModel.Tokens;
+﻿using Authentication.Data;
+using Authentication.Models;
+using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
 
 namespace Authentication.Services
 {
-    public class TokenService(IConfiguration config)
+    public class TokenService(ApplicationDbContext context, IConfiguration config)
     {
-        private readonly IConfiguration _config = config;
+        private readonly IConfiguration _config = config ?? throw new ArgumentNullException(nameof(config));
+        private readonly ApplicationDbContext _context = context ?? throw new ArgumentNullException(nameof(context));
 
         // generate access token
         public async Task<string> GenerateAccessTokenAsync(string userId, string email) 
@@ -50,5 +54,44 @@ namespace Authentication.Services
             return Convert.ToBase64String(randomBytes);
 
         }
+
+        // create refresh token record
+        public async Task CreateAsync(int userId, string refreshToken)
+        {
+            var newRefreshToken = new RefreshToken
+            {
+                Token = refreshToken,
+                UserId = userId,
+                ExpiresAt = DateTime.UtcNow.AddDays(double.Parse(_config["RefreshToken:ExpireDays"]!)),
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _context.RefreshTokens.AddAsync(newRefreshToken);
+            await _context.SaveChangesAsync();
+
+        }
+
+        // validate refresh token
+        public async Task<int> ValidateAsync(string refreshToken)
+        {
+            var tokenDetail = await _context.RefreshTokens.FirstOrDefaultAsync(x => x.Token == refreshToken);
+
+            if (tokenDetail is null || tokenDetail.IsActive is false)
+            {
+                throw new KeyNotFoundException("Token not found.");
+            }
+
+            return tokenDetail.UserId;
+
+        }
+
+        // delete refresh token
+        public async Task DeleteRefreshTokenAsync(int userId)
+        {
+            var refreshTokens = await _context.RefreshTokens
+                .Where(t => t.UserId == userId)
+                .ExecuteDeleteAsync();
+        }
+
     }
 }

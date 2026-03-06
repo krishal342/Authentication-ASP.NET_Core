@@ -6,11 +6,11 @@ namespace Authentication.Dtos.UserDtos
     public class CreateUserDto
     {
         [Required(ErrorMessage = "First Name is required!")]
-        [MinLength(3, ErrorMessage = "First Name must be at least 3 characters long!")]
+        [MaxLength(30, ErrorMessage = "First Name is maximum 30 character.")]
         public string FirstName { get; set; } = null!;
 
         [Required(ErrorMessage = "Last Name is required!")]
-        [MinLength(3, ErrorMessage = "Last Name must be at least 3 characters long!")]
+        [MaxLength(30, ErrorMessage = "Last Name is maximum 30 character.")]
         public string LastName { get; set; } = null!;
 
         [Required(ErrorMessage = "Email is required!")]
