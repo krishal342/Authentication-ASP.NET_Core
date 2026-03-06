@@ -6,18 +6,13 @@ namespace Authentication.Models
     {
         public int Id { get; set; }
 
-        [Required] 
-        [MinLength(3)]
-        public string FirstName { get; set; } = null!;
+        public required string FirstName { get; set; }
 
-        [Required] 
-        [MinLength(3)]
-        public string LastName { get; set; } = null!;
+        public required string LastName { get; set; } 
 
-        [Required]
-        public string Email { get; set; } = null!;
+        public required string Email { get; set; } 
 
-        public string Password { get; set; } = null!;
+        public required string Password { get; set; } 
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

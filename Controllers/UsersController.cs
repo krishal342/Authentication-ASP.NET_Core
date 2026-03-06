@@ -1,67 +1,84 @@
 
-
 using Authentication.Dtos.PasswordDtos;
 using Authentication.Dtos.UserDtos;
-using Authentication.Models;
+using Authentication.Exceptions;
 using Authentication.Services;
-using Microsoft.AspNetCore.Http.HttpResults;
-using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Authentication.Controllers
 {
+    [Authorize]
     [ApiController]
-    [Route("/[controller]")]
-    public class UsersController : ControllerBase
+    [Route("api/[controller]")]
+    public class UsersController(UsersService usersService) : ControllerBase
     {
-        private readonly UsersService _usersService;
 
-        public UsersController(UsersService usersService)
+        // get userId from token, or throw exception
+        private int GetCurrentUserId()
         {
-            _usersService = usersService;
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+                throw new UnauthorizedAccessException("User ID not found in token.");
+
+            return userId;
         }
 
-        // create
-        [HttpPost]
-        public async Task<IActionResult> CreateUser(CreateUserDto createUserDto)
+        // check if given id match logged in useId
+        private void VerifyUser(int id)
         {
-            try
-            {
-                var createdUser = await _usersService.CreateUserAsync(createUserDto);
-                return CreatedAtAction(nameof(ReadUser), new { id = createdUser.Id }, createdUser);
-            }
-            catch (InvalidOperationException)
-            {
-                var problem = new ProblemDetails
-                {
-                    Type = "https://httpstatuses.com/409",
-                    Title = "Conflict",
-                    Detail = "Email already exits.",
-                    Status = StatusCodes.Status409Conflict
-                };
-                return Conflict(problem);
-            }
+            var currentUserId = GetCurrentUserId();
 
+            if(currentUserId != id)
+            {
+                throw new AccessDeniedException();
+            }
         }
 
-        // read
+        // get all user (paginated)
         [HttpGet]
-        public async Task<IActionResult> ReadUsers()
+        public async Task<IActionResult> GetUsers(int pageNumber = 1, int pageSize = 10)
         {
-            var users = await _usersService.ReadUsersAsync();
-            return Ok(users);
+            var users = await usersService.GetUsersAsync(pageNumber,pageSize);
+            return Ok(new
+            {
+                pageNumber,
+                pageSize,
+                totalCount = users.Count,
+                users
+            });
         }
 
-        [HttpGet("{id}")]
-        public async Task<IActionResult> ReadUser(int id)
+        // get current authenticated user's profile
+        [HttpGet("me")]
+        public async Task<IActionResult> GetCurrentUserProfile()
         {
-            var user = await _usersService.ReadUserAsync(id);
-            if (user == null)
-                return NotFound();
+            var currentUserId = GetCurrentUserId();
+
+            var user = await usersService.GetUserAsync(currentUserId);
 
             var responseUser = new ResponseUserDto
             {
-                Id = id,
+                Id = user.Id,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                Email = user.Email,
+                CreatedAt = user.CreatedAt
+            };
+            return Ok(responseUser);
+        }
+
+        // get user by id
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetUser(int id)
+        {
+            var user = await usersService.GetUserAsync(id);
+
+            var responseUser = new ResponseUserDto
+            {
+                Id = user.Id,
                 FirstName = user.FirstName,
                 LastName = user.LastName,
                 Email = user.Email,
@@ -71,95 +88,40 @@ namespace Authentication.Controllers
             return Ok(responseUser);
         }
 
-        // update
+
+        // update logged in user detail
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateUser(int id, UpdateUserDto updateUserDto)
         {
-            try
-            {
-                var updatedUser = await _usersService.UpdateUserAsync(id, updateUserDto);
-                return Ok(updatedUser);
-            }
-            catch (KeyNotFoundException)
-            {
-                return NotFound();
-            }
-            catch (InvalidOperationException)
-            {
-                var problem = new ProblemDetails
-                {
-                    Type = "https://httpstatuses.com/409",
-                    Title = "Conflict",
-                    Detail = "Email already exits.",
-                    Status = StatusCodes.Status409Conflict
-                };
-                return Conflict(problem);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                var problem = new ProblemDetails
-                {
-                    Type = "https://httpstatuses.com/401",
-                    Title = "Unauthorized",
-                    Detail = "Password is incorrect.",
-                    Status = StatusCodes.Status401Unauthorized
-                };
-                return Unauthorized(problem);
-            }
+            VerifyUser(id);
+
+            var updatedUser = await usersService.UpdateUserAsync(id, updateUserDto);
+            return Ok(updatedUser);
 
         }
 
-        [HttpPatch("{id}/password")]
-        public async Task<IActionResult> UpdatePassword(int id, ChangePasswordDto changePasswordDto)
+
+        // change password of logged in user
+        [HttpPatch("{id}/change-password")]
+        public async Task<IActionResult> ChangePassword(int id, ChangePasswordDto changePasswordDto)
         {
-            try
-            {
-                await _usersService.ChangePasswordAsync(id, changePasswordDto);
-                return NoContent();
+            VerifyUser(id);
 
-            }
-            catch (KeyNotFoundException)
-            {
+            await usersService.ChangePasswordAsync(id, changePasswordDto);
+            return NoContent();
 
-                return NotFound();
-            }
-            catch (UnauthorizedAccessException)
-            {
-                var problem = new ProblemDetails
-                {
-                    Type = "https://httpstatuses.com/401",
-                    Title = "Unauthorized",
-                    Detail = "Current password is incorrect.",
-                    Status = StatusCodes.Status401Unauthorized
-                };
-                return Unauthorized(problem);
-            }
         }
 
-        // delete
+
+        // delete logged in user
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteUser(int id, DeleteUserDto deleteUserDto)
         {
-            try
-            {
-                await _usersService.DeleteUserAsync(id, deleteUserDto);
-                return NoContent();
-            }
-            catch (KeyNotFoundException)
-            {
-                return NotFound();
-            }
-            catch (UnauthorizedAccessException)
-            {
-                var problem = new ProblemDetails
-                {
-                    Type = "https://httpstatuses.com/401",
-                    Title = "Unauthorized",
-                    Detail = "Password is incorrect.",
-                    Status = StatusCodes.Status401Unauthorized
-                };
-                return Unauthorized(problem);
-            }
+            VerifyUser(id);
+
+            await usersService.DeleteUserAsync(id, deleteUserDto);
+            return NoContent();
+
         }
     }
 }
