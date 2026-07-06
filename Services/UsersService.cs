@@ -1,27 +1,28 @@
-﻿using Microsoft.EntityFrameworkCore;
-using Authentication.Data;
-using Authentication.Models;
-using Authentication.Dtos.UserDtos;
-using Microsoft.AspNetCore.Identity;
+﻿using Authentication.Data;
 using Authentication.Dtos.PasswordDtos;
+using Authentication.Dtos.UserDtos;
 using Authentication.Exceptions;
+using Authentication.Models;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace Authentication.Services
 {
 
 
-    public class UsersService(ApplicationDbContext context, IPasswordHasher<User> passwordHasher)
+    public class UsersService(ApplicationDbContext context, IPasswordHasher<User> passwordHasher, IHttpContextAccessor httpContextAccessor)
     {
 
         private readonly ApplicationDbContext _context = context ?? throw new ArgumentNullException(nameof(context));
         private readonly IPasswordHasher<User> _passwordHasher = passwordHasher ?? throw new ArgumentNullException(nameof(passwordHasher));
+        private readonly IHttpContextAccessor _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
 
         #region Create Operation
 
-        // create user 
-        public async Task<ResponseUserDto> CreateUserAsync(CreateUserDto createUserDto)
+        // check existing user and verify email, if not exists, create unverified user and return id
+        public async Task<ResponseUserDto> RegisterUserAsync(CreateUserDto createUserDto)
         {
-
             var email = createUserDto.Email.ToLower().Trim();
 
             var existingUser = await _context.Users
@@ -33,7 +34,7 @@ namespace Authentication.Services
                 throw new EmailAlreadyExistsException();
             }
 
-            var newUser = new User
+            var newUser = new UnverifiedUser
             {
                 FirstName = createUserDto.FirstName.Trim(),
                 LastName = createUserDto.LastName.Trim(),
@@ -41,7 +42,7 @@ namespace Authentication.Services
                 Password = _passwordHasher.HashPassword(null!, createUserDto.Password),
             };
 
-            await _context.Users.AddAsync(newUser);
+            await _context.UnverifiedUsers.AddAsync(newUser);
             await _context.SaveChangesAsync();
 
             return new ResponseUserDto
@@ -52,7 +53,39 @@ namespace Authentication.Services
                 Email = newUser.Email,
                 CreatedAt = newUser.CreatedAt
             };
+        }
 
+        // create user 
+        public async Task<ResponseUserDto> CreateUserAsync(int unverifiedUserId)
+        {
+            var unverifiedUser = await _context.UnverifiedUsers.FirstOrDefaultAsync(u => u.Id == unverifiedUserId);
+
+            if (unverifiedUser is null)
+            {
+                throw new KeyNotFoundException("Unverified user not found.");
+            }
+
+            var user = new User
+            {
+                FirstName = unverifiedUser.FirstName,
+                LastName = unverifiedUser.LastName,
+                Email = unverifiedUser.Email,
+                Password = unverifiedUser.Password
+            };
+
+            await _context.Users.AddAsync(user);
+             _context.UnverifiedUsers.Remove(unverifiedUser);
+
+            await _context.SaveChangesAsync();
+
+            return new ResponseUserDto
+            {
+                Id = user.Id,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                Email = user.Email,
+                CreatedAt = user.CreatedAt
+            };
         }
 
         #endregion
@@ -75,22 +108,26 @@ namespace Authentication.Services
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == id);
 
-            if(user is null)
+            if (user is null)
             {
                 throw new KeyNotFoundException("User not found.");
             }
             return user;
         }
-            
+
+
 
         // get user by email
         public async Task<User?> GetUserByEmailAsync(string email)
         {
             var normalizedEmail = email.ToLower().Trim();
 
-            return await _context.Users
+            var user = await _context.Users
                 .AsNoTracking()
-                .FirstOrDefaultAsync (u => u.Email == normalizedEmail);
+                .FirstOrDefaultAsync(u => u.Email == normalizedEmail);
+
+
+            return user;
         }
 
         // check if email exists without loading full user objects
@@ -128,7 +165,7 @@ namespace Authentication.Services
             var normalizeEmail = updateUserDto.Email?.ToLower().Trim();
             var emailExists = await _context.Users
                 .AsNoTracking()
-                .AnyAsync (u => u.Email == normalizeEmail);
+                .AnyAsync(u => u.Email == normalizeEmail);
 
             if (emailExists)
             {
@@ -166,6 +203,18 @@ namespace Authentication.Services
                 throw new IncorrectPasswordException();
             }
             user.Password = _passwordHasher.HashPassword(user, changePasswordDto.NewPassword);
+            await _context.SaveChangesAsync();
+        }
+
+        // reset password
+        public async Task ResetPasswordAsync(int id, ResetPasswordDto resetPasswordDto)
+        {
+            var user = await _context.Users.FindAsync(id);
+            if (user is null)
+            {
+                throw new KeyNotFoundException("User not found.");
+            }
+            user.Password = _passwordHasher.HashPassword(user, resetPasswordDto.NewPassword);
             await _context.SaveChangesAsync();
         }
 
@@ -210,9 +259,9 @@ namespace Authentication.Services
                 throw new UnauthorizedAccessException("Invalid email or password.");
             }
 
-            var verifyResut = _passwordHasher.VerifyHashedPassword(user,user.Password, password);
+            var verifyResut = _passwordHasher.VerifyHashedPassword(user, user.Password, password);
 
-            if(verifyResut == PasswordVerificationResult.Failed)
+            if (verifyResut == PasswordVerificationResult.Failed)
             {
                 throw new UnauthorizedAccessException("Invalid email or password");
             }
@@ -221,5 +270,25 @@ namespace Authentication.Services
         }
 
         #endregion
+
+
+        // not needed for now
+        //// get userId from token, or throw exception
+        //public int GetCurrentUserId()
+        //{
+        //    var user = _httpContextAccessor.HttpContext?.User;
+
+        //    if (user == null)
+        //    {
+        //        throw new UnauthorizedAccessException("No active HTTP context found.");
+        //    }
+
+        //    var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        //    if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+        //        throw new UnauthorizedAccessException("User ID not found in token.");
+
+        //    return userId;
+        //}
     }
 }

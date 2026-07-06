@@ -14,7 +14,7 @@ namespace Authentication.Services
         private readonly IConfiguration _config = config ?? throw new ArgumentNullException(nameof(config));
         private readonly ApplicationDbContext _context = context ?? throw new ArgumentNullException(nameof(context));
 
-        // generate access token
+        // generate access token / short lifespan and verified via JWT signature
         public async Task<string> GenerateAccessTokenAsync(string userId, string email) 
         {
 
@@ -76,7 +76,7 @@ namespace Authentication.Services
         {
             var tokenDetail = await _context.RefreshTokens.FirstOrDefaultAsync(x => x.Token == refreshToken);
 
-            if (tokenDetail is null || tokenDetail.IsActive is false)
+            if (tokenDetail is null || tokenDetail.ExpiresAt < DateTime.UtcNow)
             {
                 throw new KeyNotFoundException("Token not found.");
             }

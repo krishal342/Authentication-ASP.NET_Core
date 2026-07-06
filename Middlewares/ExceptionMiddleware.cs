@@ -18,7 +18,9 @@ namespace Authentication.Middlewares
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "An unhandled exception occurred.");
+                //_logger.LogError(ex, "An unhandled exception occurred.");
+                _logger.LogWarning($"Exception: {ex.Message}");
+
                 await HandleExceptionAsync(context, ex);
             }
 

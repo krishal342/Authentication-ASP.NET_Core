@@ -31,7 +31,7 @@ namespace Authentication.Controllers
         {
             var currentUserId = GetCurrentUserId();
 
-            if(currentUserId != id)
+            if (currentUserId != id)
             {
                 throw new AccessDeniedException();
             }

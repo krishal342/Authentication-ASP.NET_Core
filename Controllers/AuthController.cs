@@ -1,5 +1,7 @@
-﻿using Authentication.Dtos.PasswordDtos;
+﻿using Authentication.Dtos;
+using Authentication.Dtos.PasswordDtos;
 using Authentication.Dtos.UserDtos;
+using Authentication.Migrations;
 using Authentication.Models;
 using Authentication.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -11,9 +13,10 @@ namespace Authentication.Controllers
     [ApiController]
     [Route("api/[controller]")]
     public class AuthController(
-        TokenService tokenService, 
-        UsersService usersService, 
-        EmailService emailService, 
+        TokenService tokenService,
+        UsersService usersService,
+        EmailService emailService,
+        OtpService otpService,
         IConfiguration config) : ControllerBase
     {
 
@@ -42,11 +45,56 @@ namespace Authentication.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register(CreateUserDto createUserDto)
         {
+            var unverifiedUser = await usersService.RegisterUserAsync(createUserDto);
 
-            var createdUser = await usersService.CreateUserAsync(createUserDto);
-            return CreatedAtAction(nameof(Login), new { email = createdUser.Email }, createdUser);
+            var otp = await otpService.GenerateOtpAsync();
+            var verificationToken = await tokenService.GenerateRefreshTokenAsync();
+
+            await otpService.StoreOtpAsync(unverifiedUser.Id, otp, verificationToken);
+
+            //await emailService.SendEmailAsync(unverifiedUser.Email, "OTP for email verification.", $"The OTP for your email verification is: {otp}");
+
+            Response.Cookies.Append("verificationToken", verificationToken, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.None,
+                Expires = DateTime.UtcNow.AddMinutes(double.Parse(config["Token:ExpireMinutes"]!)),
+                Path = "/api/auth"
+            });
+
+            return Ok(new
+            {
+                message = "User registered successfully. Please check your email for the OTP to verify your account.",
+                email = unverifiedUser.Email
+            });
 
         }
+
+        // verify user email
+        [HttpPost("verify-email")]
+        public async Task<IActionResult> VerifyEmail(OtpDto otpDto)
+        {
+            var verificationToken = Request.Cookies["verificationToken"];
+
+            if (string.IsNullOrEmpty(verificationToken))
+            {
+                throw new UnauthorizedAccessException("Expired or Invalid verification token.");
+            }
+
+            // return unverified user id if OTP and token is valid
+            int unverifiedUserId = await otpService.VerifyOtpAsync(verificationToken, otpDto.Otp);  
+
+            var user = await usersService.CreateUserAsync(unverifiedUserId);
+
+            return CreatedAtAction(nameof(Login), new { id = user.Id }, new
+            {
+                message = "Email verified successfully. You can now log in.",
+                email = user.Email
+            });
+
+        }
+
         #endregion
 
         #region login user
@@ -109,7 +157,7 @@ namespace Authentication.Controllers
         public async Task<IActionResult> Logout()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if(userIdClaim is null || int.TryParse(userIdClaim,out var userId))
+            if (userIdClaim is null || !int.TryParse(userIdClaim, out var userId))
             {
                 throw new UnauthorizedAccessException("User ID not found in token.");
             }
@@ -118,7 +166,8 @@ namespace Authentication.Controllers
 
             await tokenService.DeleteRefreshTokenAsync(userId);
 
-            return Ok(new {
+            return Ok(new
+            {
                 token = ""
             });
         }
@@ -126,35 +175,79 @@ namespace Authentication.Controllers
         #endregion
 
         #region reset password
+
         // reset password request
-        [HttpPost("/forget-password")]
+        [HttpPost("forget-password")]
         public async Task<IActionResult> ForgetPassword(ForgetPasswordDto forgetPasswordDto)
         {
-            var user = usersService.GetUserByEmailAsync(forgetPasswordDto.Email);
+
+            var user = await usersService.GetUserByEmailAsync(forgetPasswordDto.Email);
+
             if (user is null)
             {
                 return Ok();
             }
 
-            await emailService.SendEmailAsync("krishal342@gmail.com", "OTP", "OTP Testing.");
+            var otp = await otpService.GenerateOtpAsync();
+            var otpToken = await tokenService.GenerateRefreshTokenAsync();
 
-            return Ok("forget password");
+            await otpService.StoreOtpAsync(user.Id, otp, otpToken);
+
+            //await emailService.SendEmailAsync(user.Email, "OTP", $"The OTP for your password reset request is: {otp}");
+
+
+            Response.Cookies.Append("otpToken", otpToken, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.None,
+                Expires = DateTime.UtcNow.AddMinutes(double.Parse(config["Token:ExpireMinutes"]!)),
+                Path = "api/auth"
+            });
+
+            return Ok(new { message = "OTP sent successfully." });
+
         }
 
 
-        // validate OTP
-        [HttpPost("/validate-otp")]
-        public async Task<IActionResult> ValidateOTP()
+        // verify OTP
+        [HttpPost("verify-otp")]
+        public async Task<IActionResult> ValidateOTP(OtpDto otpDto)
         {
-            return Ok("Validate OTP");
+            var otpToken = Request.Cookies["otpToken"];
+
+            if (string.IsNullOrEmpty(otpToken))
+            {
+                throw new UnauthorizedAccessException("Expired or Invalid OTP token.");
+            }
+
+
+            await otpService.VerifyOtpAsync(otpToken, otpDto.Otp);
+
+
+            return Ok();
+
         }
 
 
         // reset password
-        [HttpPost("/reset-password")]
-        public async Task<IActionResult> ResetPassword()
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword(ResetPasswordDto resetPasswordDto)
         {
-            return Ok("Reset Password");
+            var otpToken = Request.Cookies["otpToken"];
+
+            if (string.IsNullOrEmpty(otpToken))
+            {
+                throw new UnauthorizedAccessException("Expired or Invalid OTP token.");
+            }
+
+            var userId = await otpService.VerifyOtpTokenAsync(otpToken);
+
+            await usersService.ResetPasswordAsync(userId, resetPasswordDto);
+
+            await otpService.DeleteOtpAsync(otpToken);
+
+            return Ok(new { message = "Password reset successfully." });
         }
 
         #endregion

@@ -2,5 +2,22 @@
 
 
 
+###
+
+POST {{Authentication_HostAddress}}/api/auth/verify-email
+Content-Type: application/json
+Cookie: verificationToken={wejlwe3}
+
+{
+  "otp":1234
+}
+###
+
+POST {{Authentication_HostAddress}}/api/auth/register
+Content-Type: application/json
+
+{
+  //CreateUserDto
+}
 
 ###

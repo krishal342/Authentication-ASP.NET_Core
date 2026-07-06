@@ -15,6 +15,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
 
+builder.Services.AddHttpContextAccessor();
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -39,10 +41,12 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 builder.Services.AddScoped<UsersService>();
 builder.Services.AddScoped<TokenService>();
-builder.Services.AddScoped<RefreshTokenCleanupService>();
 builder.Services.AddScoped<EmailService>();
+builder.Services.AddScoped<OtpService>();
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 
+builder.Services.AddHostedService<RefreshTokenCleanupService>();
+builder.Services.AddHostedService<OtpCleanupService>();
 
 builder.Services.AddControllers();
 

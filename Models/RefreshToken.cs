@@ -15,9 +15,5 @@ namespace Authentication.Models
         public DateTime ExpiresAt { get; set; }
 
 
-
-        public bool IsExpired => DateTime.UtcNow > ExpiresAt;
-
-        public bool IsActive =>  !IsExpired;
     }
 }
