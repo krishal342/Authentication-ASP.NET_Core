@@ -21,7 +21,7 @@ RUN dotnet publish "Authentication.csproj" -c Release -o /app/publish /p:UseAppH
 # Stage 4: Final container image
 FROM base AS final
 WORKDIR /app
-COPY --from=publish /app/publish .
+COPY --from=build /app/publish .
 
 # Run the application as a non-root 'app' user for security
 USER app
