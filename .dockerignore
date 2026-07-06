@@ -1,0 +1,39 @@
+# --- .NET Build & Tooling Artifacts ---
+bin/
+obj/
+*.user
+*.userosscache
+*.sln.docstates
+
+# --- IDEs & Code Editors ---
+.visualstudio/
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.sln.docstates
+
+# --- Version Control & CI/CD ---
+.git/
+.gitignore
+.github/
+
+# --- Operating System Junk ---
+Thumbs.db
+EHthumbs.db
+Desktop.ini
+.DS_Store
+
+# --- Docker & Local Environment Logs ---
+.dockerignore
+Dockerfile
+docker-compose*
+*.log
+
+# --- Sensitive Data / Secrets ---
+# (Adjust if you use local secrets or .env files, though GitHub Secrets handles production)
+*.pem
+*.cert
+*.secret
+.env
